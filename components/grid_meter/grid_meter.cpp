@@ -27,7 +27,7 @@ uint16_t GridMeterComponent::get_register_(const uint16_t *regs, uint16_t addr) 
   if (addr < REG_COUNT) return regs[addr];
   if (addr == 0x0302) return 0x0100;  // HW version 1.0.0
   if (addr == 0x0304) return 0x0100;  // FW version 1.0.0
-  if (addr == 0x1002) return 3;       // PhaseConfig = 1P (single phase)
+  if (addr == 0x1002) return this->is_three_phase_ ? 0 : 3;  // PhaseConfig: 0 = 3P, 3 = 1P
   if (addr == 0xa000) return 7;       // Application = H mode
   if (addr == 0xa100) return 2;       // SwitchPos = '1' (active kWh, both directions)
   return 0;
@@ -76,7 +76,11 @@ void GridMeterComponent::setup() {
   int flags = ::fcntl(this->server_fd_, F_GETFL, 0);
   ::fcntl(this->server_fd_, F_SETFL, flags | O_NONBLOCK);
 
-  ESP_LOGI(TAG, "Grid meter Modbus TCP server listening on port 502 (EM24 emulation)");
+  if (this->is_three_phase_) {
+    ESP_LOGI(TAG, "Grid meter Modbus TCP server listening on port 502 (EM24 3-phase emulation)");
+  } else {
+    ESP_LOGI(TAG, "Grid meter Modbus TCP server listening on port 502 (EM24 single-phase emulation)");
+  }
 }
 
 void GridMeterComponent::loop() {
@@ -94,10 +98,25 @@ void GridMeterComponent::loop() {
 
 void GridMeterComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Grid Meter (EM24 emulation over Modbus TCP):");
-  LOG_SENSOR("  ", "Power Import", this->power_import_);
-  LOG_SENSOR("  ", "Power Export", this->power_export_);
-  LOG_SENSOR("  ", "Voltage", this->voltage_);
-  LOG_SENSOR("  ", "Current", this->current_);
+  if (this->is_three_phase_) {
+    LOG_SENSOR("  ", "Power Import L1", this->power_import_l1_);
+    LOG_SENSOR("  ", "Power Import L2", this->power_import_l2_);
+    LOG_SENSOR("  ", "Power Import L3", this->power_import_l3_);
+    LOG_SENSOR("  ", "Power Export L1", this->power_export_l1_);
+    LOG_SENSOR("  ", "Power Export L2", this->power_export_l2_);
+    LOG_SENSOR("  ", "Power Export L3", this->power_export_l3_);
+    LOG_SENSOR("  ", "Voltage L1", this->voltage_l1_);
+    LOG_SENSOR("  ", "Voltage L2", this->voltage_l2_);
+    LOG_SENSOR("  ", "Voltage L3", this->voltage_l3_);
+    LOG_SENSOR("  ", "Current L1", this->current_l1_);
+    LOG_SENSOR("  ", "Current L2", this->current_l2_);
+    LOG_SENSOR("  ", "Current L3", this->current_l3_);
+  } else {
+    LOG_SENSOR("  ", "Power Import", this->power_import_);
+    LOG_SENSOR("  ", "Power Export", this->power_export_);
+    LOG_SENSOR("  ", "Voltage", this->voltage_);
+    LOG_SENSOR("  ", "Current", this->current_);
+  }
   LOG_SENSOR("  ", "Energy Import T1", this->energy_import_t1_);
   LOG_SENSOR("  ", "Energy Import T2", this->energy_import_t2_);
   LOG_SENSOR("  ", "Energy Export T1", this->energy_export_t1_);
@@ -107,25 +126,33 @@ void GridMeterComponent::dump_config() {
 // ---------- sensor refresh ----------
 
 void GridMeterComponent::refresh_sensors_() {
+  if (this->is_three_phase_) {
+    refresh_sensors_three_phase_();
+  } else {
+    refresh_sensors_single_phase_();
+  }
+}
+
+void GridMeterComponent::refresh_sensors_single_phase_() {
   // L1 Voltage (Reg_s32l, ÷10 V) at 0x0000-0x0001 -- hold last good on NaN
   float v = this->voltage_->get_state();
   if (!std::isnan(v)) {
     int32_t v_raw = static_cast<int32_t>(v * 10.0f + 0.5f);
-    this->voltage_shadow_[0] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) & 0xFFFF);  // low word
-    this->voltage_shadow_[1] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) >> 16);     // high word
+    this->voltage_shadow_l1_[0] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) & 0xFFFF);  // low word
+    this->voltage_shadow_l1_[1] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) >> 16);     // high word
   }
-  this->registers_[0x0000] = this->voltage_shadow_[0];
-  this->registers_[0x0001] = this->voltage_shadow_[1];
+  this->registers_[0x0000] = this->voltage_shadow_l1_[0];
+  this->registers_[0x0001] = this->voltage_shadow_l1_[1];
 
   // L1 Current (Reg_s32l, ÷1000 A) at 0x000C-0x000D -- hold last good on NaN, always positive magnitude
   float i = this->current_->get_state();
   if (!std::isnan(i)) {
     int32_t i_raw = static_cast<int32_t>(std::abs(i) * 1000.0f + 0.5f);
-    this->current_shadow_[0] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) & 0xFFFF);  // low word
-    this->current_shadow_[1] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) >> 16);     // high word
+    this->current_shadow_l1_[0] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) & 0xFFFF);  // low word
+    this->current_shadow_l1_[1] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) >> 16);     // high word
   }
-  this->registers_[0x000C] = this->current_shadow_[0];
-  this->registers_[0x000D] = this->current_shadow_[1];
+  this->registers_[0x000C] = this->current_shadow_l1_[0];
+  this->registers_[0x000D] = this->current_shadow_l1_[1];
 
   // Net power (Reg_s32l, ÷10 W) -- positive = import, negative = export; zero on NaN
   // Written to 0x0012-0x0013 (L1 power) and 0x0028-0x0029 (total power — same for single phase)
@@ -158,6 +185,145 @@ void GridMeterComponent::refresh_sensors_() {
   } else {
     write_int32_(this->registers_, 0x34, 0);
     write_int32_(this->registers_, 0x40, 0);
+  }
+
+  // Energy export total (Reg_s32l, ÷10 kWh) at 0x004E-0x004F
+  float ee1 = this->energy_export_t1_->get_state();
+  float ee2 = this->energy_export_t2_->get_state();
+  if (!std::isnan(ee1) && !std::isnan(ee2)) {
+    double kwh = static_cast<double>(ee1) + static_cast<double>(ee2);
+    double raw = kwh * 10.0;
+    if (raw > static_cast<double>(INT32_MAX)) {
+      ESP_LOGW(TAG, "Energy export value %.1f kWh exceeds INT32_MAX, clamping", kwh);
+      raw = static_cast<double>(INT32_MAX);
+    }
+    raw = std::max(0.0, raw);
+    write_int32_(this->registers_, 0x4E, static_cast<int32_t>(raw));
+  } else {
+    write_int32_(this->registers_, 0x4E, 0);
+  }
+}
+
+void GridMeterComponent::refresh_sensors_three_phase_() {
+  // L1 Voltage (Reg_s32l, ÷10 V) at 0x0000-0x0001
+  float v1 = this->voltage_l1_->get_state();
+  if (!std::isnan(v1)) {
+    int32_t v_raw = static_cast<int32_t>(v1 * 10.0f + 0.5f);
+    this->voltage_shadow_l1_[0] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) & 0xFFFF);
+    this->voltage_shadow_l1_[1] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) >> 16);
+  }
+  this->registers_[0x0000] = this->voltage_shadow_l1_[0];
+  this->registers_[0x0001] = this->voltage_shadow_l1_[1];
+
+  // L2 Voltage (Reg_s32l, ÷10 V) at 0x0002-0x0003
+  float v2 = this->voltage_l2_->get_state();
+  if (!std::isnan(v2)) {
+    int32_t v_raw = static_cast<int32_t>(v2 * 10.0f + 0.5f);
+    this->voltage_shadow_l2_[0] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) & 0xFFFF);
+    this->voltage_shadow_l2_[1] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) >> 16);
+  }
+  this->registers_[0x0002] = this->voltage_shadow_l2_[0];
+  this->registers_[0x0003] = this->voltage_shadow_l2_[1];
+
+  // L3 Voltage (Reg_s32l, ÷10 V) at 0x0004-0x0005
+  float v3 = this->voltage_l3_->get_state();
+  if (!std::isnan(v3)) {
+    int32_t v_raw = static_cast<int32_t>(v3 * 10.0f + 0.5f);
+    this->voltage_shadow_l3_[0] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) & 0xFFFF);
+    this->voltage_shadow_l3_[1] = static_cast<uint16_t>(static_cast<uint32_t>(v_raw) >> 16);
+  }
+  this->registers_[0x0004] = this->voltage_shadow_l3_[0];
+  this->registers_[0x0005] = this->voltage_shadow_l3_[1];
+
+  // L1 Current (Reg_s32l, ÷1000 A) at 0x000C-0x000D
+  float i1 = this->current_l1_->get_state();
+  if (!std::isnan(i1)) {
+    int32_t i_raw = static_cast<int32_t>(std::abs(i1) * 1000.0f + 0.5f);
+    this->current_shadow_l1_[0] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) & 0xFFFF);
+    this->current_shadow_l1_[1] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) >> 16);
+  }
+  this->registers_[0x000C] = this->current_shadow_l1_[0];
+  this->registers_[0x000D] = this->current_shadow_l1_[1];
+
+  // L2 Current (Reg_s32l, ÷1000 A) at 0x000E-0x000F
+  float i2 = this->current_l2_->get_state();
+  if (!std::isnan(i2)) {
+    int32_t i_raw = static_cast<int32_t>(std::abs(i2) * 1000.0f + 0.5f);
+    this->current_shadow_l2_[0] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) & 0xFFFF);
+    this->current_shadow_l2_[1] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) >> 16);
+  }
+  this->registers_[0x000E] = this->current_shadow_l2_[0];
+  this->registers_[0x000F] = this->current_shadow_l2_[1];
+
+  // L3 Current (Reg_s32l, ÷1000 A) at 0x0010-0x0011
+  float i3 = this->current_l3_->get_state();
+  if (!std::isnan(i3)) {
+    int32_t i_raw = static_cast<int32_t>(std::abs(i3) * 1000.0f + 0.5f);
+    this->current_shadow_l3_[0] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) & 0xFFFF);
+    this->current_shadow_l3_[1] = static_cast<uint16_t>(static_cast<uint32_t>(i_raw) >> 16);
+  }
+  this->registers_[0x0010] = this->current_shadow_l3_[0];
+  this->registers_[0x0011] = this->current_shadow_l3_[1];
+
+  // L1 Active power (Reg_s32l, ÷10 W) at 0x0012-0x0013
+  float imp1 = this->power_import_l1_->get_state();
+  float exp1 = this->power_export_l1_->get_state();
+  if (!std::isnan(imp1) && !std::isnan(exp1)) {
+    float net = imp1 - exp1;
+    int32_t pwr_raw = static_cast<int32_t>(net * 10.0f + (net >= 0 ? 0.5f : -0.5f));
+    write_int32_(this->registers_, 0x12, pwr_raw);
+  } else {
+    write_int32_(this->registers_, 0x12, 0);
+  }
+
+  // L2 Active power (Reg_s32l, ÷10 W) at 0x0014-0x0015
+  float imp2 = this->power_import_l2_->get_state();
+  float exp2 = this->power_export_l2_->get_state();
+  if (!std::isnan(imp2) && !std::isnan(exp2)) {
+    float net = imp2 - exp2;
+    int32_t pwr_raw = static_cast<int32_t>(net * 10.0f + (net >= 0 ? 0.5f : -0.5f));
+    write_int32_(this->registers_, 0x14, pwr_raw);
+  } else {
+    write_int32_(this->registers_, 0x14, 0);
+  }
+
+  // L3 Active power (Reg_s32l, ÷10 W) at 0x0016-0x0017
+  float imp3 = this->power_import_l3_->get_state();
+  float exp3 = this->power_export_l3_->get_state();
+  if (!std::isnan(imp3) && !std::isnan(exp3)) {
+    float net = imp3 - exp3;
+    int32_t pwr_raw = static_cast<int32_t>(net * 10.0f + (net >= 0 ? 0.5f : -0.5f));
+    write_int32_(this->registers_, 0x16, pwr_raw);
+  } else {
+    write_int32_(this->registers_, 0x16, 0);
+  }
+
+  // Total active power (Reg_s32l, ÷10 W) at 0x0028-0x0029 = sum of all phases
+  float total_imp = imp1 + imp2 + imp3;
+  float total_exp = exp1 + exp2 + exp3;
+  if (!std::isnan(total_imp) && !std::isnan(total_exp)) {
+    float net = total_imp - total_exp;
+    int32_t pwr_raw = static_cast<int32_t>(net * 10.0f + (net >= 0 ? 0.5f : -0.5f));
+    write_int32_(this->registers_, 0x28, pwr_raw);
+  } else {
+    write_int32_(this->registers_, 0x28, 0);
+  }
+
+  // Energy import total (Reg_s32l, ÷10 kWh) at 0x0034-0x0035
+  float ei1 = this->energy_import_t1_->get_state();
+  float ei2 = this->energy_import_t2_->get_state();
+  if (!std::isnan(ei1) && !std::isnan(ei2)) {
+    double kwh = static_cast<double>(ei1) + static_cast<double>(ei2);
+    double raw = kwh * 10.0;
+    if (raw > static_cast<double>(INT32_MAX)) {
+      ESP_LOGW(TAG, "Energy import value %.1f kWh exceeds INT32_MAX, clamping", kwh);
+      raw = static_cast<double>(INT32_MAX);
+    }
+    raw = std::max(0.0, raw);
+    int32_t ei_raw = static_cast<int32_t>(raw);
+    write_int32_(this->registers_, 0x34, ei_raw);
+  } else {
+    write_int32_(this->registers_, 0x34, 0);
   }
 
   // Energy export total (Reg_s32l, ÷10 kWh) at 0x004E-0x004F
