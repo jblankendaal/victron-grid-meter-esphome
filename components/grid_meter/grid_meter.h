@@ -119,6 +119,8 @@ class GridMeterComponent : public Component {
 
   // Helpers
   void refresh_sensors_();
+  void refresh_sensors_single_phase_();
+  void refresh_sensors_three_phase_();
   void accept_clients_();
   void process_client_(Client &c);
   void handle_frame_(Client &c, uint16_t frame_len);
