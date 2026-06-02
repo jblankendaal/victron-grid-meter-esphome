@@ -35,53 +35,91 @@ CONF_ENERGY_IMP_T2 = "energy_import_t2"
 CONF_ENERGY_EXP_T1 = "energy_export_t1"
 CONF_ENERGY_EXP_T2 = "energy_export_t2"
 
+SINGLE_PHASE_KEYS = (
+    CONF_POWER_IMPORT,
+    CONF_POWER_EXPORT,
+    CONF_VOLTAGE,
+    CONF_CURRENT,
+)
+
+THREE_PHASE_KEYS = (
+    CONF_POWER_IMPORT_L1,
+    CONF_POWER_IMPORT_L2,
+    CONF_POWER_IMPORT_L3,
+    CONF_POWER_EXPORT_L1,
+    CONF_POWER_EXPORT_L2,
+    CONF_POWER_EXPORT_L3,
+    CONF_VOLTAGE_L1,
+    CONF_VOLTAGE_L2,
+    CONF_VOLTAGE_L3,
+    CONF_CURRENT_L1,
+    CONF_CURRENT_L2,
+    CONF_CURRENT_L3,
+)
+
 # Single-phase schema
 SINGLE_PHASE_SCHEMA = cv.Schema(
     {
-        cv.Required(CONF_POWER_IMPORT): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_POWER_EXPORT): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_VOLTAGE): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_CURRENT): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_IMPORT): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_EXPORT): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_VOLTAGE): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_CURRENT): cv.use_id(sensor.Sensor),
     }
 )
 
 # Three-phase schema
 THREE_PHASE_SCHEMA = cv.Schema(
     {
-        cv.Required(CONF_POWER_IMPORT_L1): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_POWER_IMPORT_L2): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_POWER_IMPORT_L3): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_POWER_EXPORT_L1): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_POWER_EXPORT_L2): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_POWER_EXPORT_L3): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_VOLTAGE_L1): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_VOLTAGE_L2): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_VOLTAGE_L3): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_CURRENT_L1): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_CURRENT_L2): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_CURRENT_L3): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_IMPORT_L1): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_IMPORT_L2): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_IMPORT_L3): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_EXPORT_L1): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_EXPORT_L2): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_POWER_EXPORT_L3): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_VOLTAGE_L1): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_VOLTAGE_L2): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_VOLTAGE_L3): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_CURRENT_L1): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_CURRENT_L2): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_CURRENT_L3): cv.use_id(sensor.Sensor),
     }
 )
 
 
 def validate_config(config):
-    """Validate that either single-phase or three-phase is configured, not both or neither."""
-    has_single_phase = CONF_POWER_IMPORT in config
-    has_three_phase = CONF_POWER_IMPORT_L1 in config
+    """Validate that either a complete single-phase or three-phase config is present."""
+    single_phase_keys = [key for key in SINGLE_PHASE_KEYS if key in config]
+    three_phase_keys = [key for key in THREE_PHASE_KEYS if key in config]
     
-    if has_single_phase and has_three_phase:
+    if single_phase_keys and three_phase_keys:
         raise cv.Invalid(
             "Cannot configure both single-phase and three-phase sensors. "
             "Use either (power_import/power_export/voltage/current) "
             "or (power_import_l1/l2/l3, power_export_l1/l2/l3, voltage_l1/l2/l3, current_l1/l2/l3)"
         )
     
-    if not has_single_phase and not has_three_phase:
+    if not single_phase_keys and not three_phase_keys:
         raise cv.Invalid(
             "Must configure either single-phase or three-phase sensors. "
             "Use either (power_import/power_export/voltage/current) "
             "or (power_import_l1/l2/l3, power_export_l1/l2/l3, voltage_l1/l2/l3, current_l1/l2/l3)"
         )
+
+    if single_phase_keys:
+        missing = [key for key in SINGLE_PHASE_KEYS if key not in config]
+        if missing:
+            raise cv.Invalid(
+                "Single-phase configuration is incomplete. Missing: "
+                + ", ".join(missing)
+            )
+
+    if three_phase_keys:
+        missing = [key for key in THREE_PHASE_KEYS if key not in config]
+        if missing:
+            raise cv.Invalid(
+                "Three-phase configuration is incomplete. Missing: "
+                + ", ".join(missing)
+            )
     
     return config
 
