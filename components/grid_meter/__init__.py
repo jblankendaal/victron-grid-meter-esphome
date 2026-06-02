@@ -63,6 +63,29 @@ THREE_PHASE_SCHEMA = cv.Schema(
     }
 )
 
+
+def validate_config(config):
+    """Validate that either single-phase or three-phase is configured, not both or neither."""
+    has_single_phase = CONF_POWER_IMPORT in config
+    has_three_phase = CONF_POWER_IMPORT_L1 in config
+    
+    if has_single_phase and has_three_phase:
+        raise cv.Invalid(
+            "Cannot configure both single-phase and three-phase sensors. "
+            "Use either (power_import/power_export/voltage/current) "
+            "or (power_import_l1/l2/l3, power_export_l1/l2/l3, voltage_l1/l2/l3, current_l1/l2/l3)"
+        )
+    
+    if not has_single_phase and not has_three_phase:
+        raise cv.Invalid(
+            "Must configure either single-phase or three-phase sensors. "
+            "Use either (power_import/power_export/voltage/current) "
+            "or (power_import_l1/l2/l3, power_export_l1/l2/l3, voltage_l1/l2/l3, current_l1/l2/l3)"
+        )
+    
+    return config
+
+
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
@@ -77,7 +100,7 @@ CONFIG_SCHEMA = cv.All(
     .extend(THREE_PHASE_SCHEMA)
     .extend(cv.COMPONENT_SCHEMA),
     cv.only_on_esp32,
-    cv.any_of(SINGLE_PHASE_SCHEMA, THREE_PHASE_SCHEMA, msg="Either single-phase (power_import/power_export/voltage/current) or three-phase (power_import_l1/l2/l3, etc.) sensors must be configured"),
+    validate_config,
 )
 
 
