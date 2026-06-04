@@ -33,6 +33,7 @@ All multi-register values use **little-endian word order** (low word at lower ad
 | 0x0014–0x0015 | L2 Active power         | int32  | ÷10 W        | positive = import              |
 | 0x0016–0x0017 | L3 Active power         | int32  | ÷10 W        | positive = import              |
 | 0x0028–0x0029 | Total active power      | int32  | ÷10 W        | sum of L1+L2+L3                |
+| 0x0032        | Phase sequence          | int16  | —            | 0 = L1-L2-L3, -1 = L1-L3-L2   |
 | 0x0033        | Frequency               | uint16 | ÷10 Hz       | hardcoded 50.0 Hz              |
 | 0x0034–0x0035 | Energy import total     | int32  | ÷10 kWh      | T1+T2                          |
 | 0x004E–0x004F | Energy export total     | int32  | ÷10 kWh      | T1+T2                          |
@@ -165,7 +166,15 @@ grid_meter:
   energy_import_t2: energy_delivered_tariff2
   energy_export_t1: energy_returned_tariff1
   energy_export_t2: energy_returned_tariff2
+  phase_sequence: l1_l3_l2  # Optional; default is l1_l2_l3
 ```
+
+`phase_sequence` controls the EM24 phase-sequence register at `0x0032`:
+
+- `l1_l2_l3` reports normal phase sequence (`0`)
+- `l1_l3_l2` reports reversed phase sequence (`-1`)
+
+This does not swap per-phase measurements. If your L2/L3 sensor values are physically swapped, also swap the corresponding `*_l2` and `*_l3` sensor references above.
 
 ### Single-phase configuration (backwards compatible)
 

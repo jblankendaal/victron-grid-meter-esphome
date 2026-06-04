@@ -34,6 +34,12 @@ CONF_ENERGY_IMP_T1 = "energy_import_t1"
 CONF_ENERGY_IMP_T2 = "energy_import_t2"
 CONF_ENERGY_EXP_T1 = "energy_export_t1"
 CONF_ENERGY_EXP_T2 = "energy_export_t2"
+CONF_PHASE_SEQUENCE = "phase_sequence"
+
+PHASE_SEQUENCES = {
+    "l1_l2_l3": 0,
+    "l1_l3_l2": -1,
+}
 
 SINGLE_PHASE_KEYS = (
     CONF_POWER_IMPORT,
@@ -106,6 +112,9 @@ def validate_config(config):
         )
 
     if single_phase_keys:
+        if config[CONF_PHASE_SEQUENCE] != PHASE_SEQUENCES["l1_l2_l3"]:
+            raise cv.Invalid("phase_sequence can only be set for three-phase configurations")
+
         missing = [key for key in SINGLE_PHASE_KEYS if key not in config]
         if missing:
             raise cv.Invalid(
@@ -132,6 +141,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_ENERGY_IMP_T2): cv.use_id(sensor.Sensor),
             cv.Required(CONF_ENERGY_EXP_T1): cv.use_id(sensor.Sensor),
             cv.Required(CONF_ENERGY_EXP_T2): cv.use_id(sensor.Sensor),
+            cv.Optional(CONF_PHASE_SEQUENCE, default="l1_l2_l3"): cv.enum(
+                PHASE_SEQUENCES, lower=True
+            ),
         }
     )
     .extend(SINGLE_PHASE_SCHEMA)
@@ -202,4 +214,5 @@ async def to_code(config):
             energy_export_t2,
         )
 
+    cg.add(var.set_phase_sequence(config[CONF_PHASE_SEQUENCE]))
     await cg.register_component(var, config)

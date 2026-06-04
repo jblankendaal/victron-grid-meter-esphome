@@ -17,6 +17,8 @@ static constexpr uint16_t DEVICE_ID_EM24 = 1648;    // EM24DINAV23XE1X (only EM2
 static constexpr uint8_t MAX_CLIENTS = 2;
 static constexpr uint16_t MAX_BUF = 260;
 static constexpr uint32_t CLIENT_TIMEOUT_MS = 10000;
+static constexpr int16_t PHASE_SEQUENCE_L1_L2_L3 = 0;
+static constexpr int16_t PHASE_SEQUENCE_L1_L3_L2 = -1;
 
 struct Client {
   int fd{-1};
@@ -71,6 +73,7 @@ class GridMeterComponent : public Component {
   void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
+  void set_phase_sequence(int16_t phase_sequence) { this->phase_sequence_ = phase_sequence; }
 
  protected:
   // Single-phase sensors (backwards compatibility)
@@ -100,6 +103,7 @@ class GridMeterComponent : public Component {
   sensor::Sensor *energy_export_t2_;
 
   bool is_three_phase_;
+  int16_t phase_sequence_{PHASE_SEQUENCE_L1_L2_L3};
 
   // Last known good values for voltage and current (hold-on-NaN)
   // Stored as [low_word, high_word] (little-endian word order, matching Reg_s32l)

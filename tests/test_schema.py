@@ -80,6 +80,25 @@ def test_valid_single_phase_config_accepted():
     assert result is not None
 
 
+def test_single_phase_config_rejects_reversed_phase_sequence():
+    """phase_sequence only applies to three-phase configs."""
+    import esphome.config_validation as cv
+    schema = _load_schema()
+    config = {
+        "power_import": "power_delivered",
+        "power_export": "power_returned",
+        "voltage": "voltage_l1",
+        "current": "current_l1",
+        "energy_import_t1": "energy_delivered_tariff1",
+        "energy_import_t2": "energy_delivered_tariff2",
+        "energy_export_t1": "energy_returned_tariff1",
+        "energy_export_t2": "energy_returned_tariff2",
+        "phase_sequence": "l1_l3_l2",
+    }
+    with pytest.raises(cv.Invalid, match="phase_sequence"):
+        schema(config)
+
+
 def test_valid_three_phase_config_accepted():
     """CONFIG_SCHEMA must accept a complete three-phase config."""
     schema = _load_schema()
@@ -103,6 +122,33 @@ def test_valid_three_phase_config_accepted():
     }
     result = schema(config)
     assert result is not None
+    assert result["phase_sequence"] == 0
+
+
+def test_valid_three_phase_config_accepts_l1_l3_l2_phase_sequence():
+    """CONFIG_SCHEMA must accept the reversed three-phase sequence option."""
+    schema = _load_schema()
+    config = {
+        "power_import_l1": "power_delivered_l1",
+        "power_import_l2": "power_delivered_l2",
+        "power_import_l3": "power_delivered_l3",
+        "power_export_l1": "power_returned_l1",
+        "power_export_l2": "power_returned_l2",
+        "power_export_l3": "power_returned_l3",
+        "voltage_l1": "voltage_l1",
+        "voltage_l2": "voltage_l2",
+        "voltage_l3": "voltage_l3",
+        "current_l1": "current_l1",
+        "current_l2": "current_l2",
+        "current_l3": "current_l3",
+        "energy_import_t1": "energy_delivered_tariff1",
+        "energy_import_t2": "energy_delivered_tariff2",
+        "energy_export_t1": "energy_returned_tariff1",
+        "energy_export_t2": "energy_returned_tariff2",
+        "phase_sequence": "l1_l3_l2",
+    }
+    result = schema(config)
+    assert result["phase_sequence"] == -1
 
 
 def test_incomplete_three_phase_config_rejected():

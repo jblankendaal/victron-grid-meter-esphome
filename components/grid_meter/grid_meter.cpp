@@ -39,6 +39,7 @@ void GridMeterComponent::setup() {
   // Initialise register bank to zero, then set constant fields
   memset(this->registers_, 0, sizeof(this->registers_));
   this->registers_[0x000B] = DEVICE_ID_EM24;  // Model ID register (probed by carlo_gavazzi.py)
+  this->registers_[0x0032] = static_cast<uint16_t>(this->phase_sequence_);  // Phase sequence: 0 or -1
   this->registers_[0x0033] = 500;             // Frequency: 50.0 Hz (Reg_u16, ÷10 Hz)
 
   // Open non-blocking TCP socket on port 502
@@ -117,6 +118,8 @@ void GridMeterComponent::dump_config() {
     LOG_SENSOR("  ", "Voltage", this->voltage_);
     LOG_SENSOR("  ", "Current", this->current_);
   }
+  ESP_LOGCONFIG(TAG, "  Phase Sequence: %s",
+                this->phase_sequence_ == PHASE_SEQUENCE_L1_L3_L2 ? "L1-L3-L2" : "L1-L2-L3");
   LOG_SENSOR("  ", "Energy Import T1", this->energy_import_t1_);
   LOG_SENSOR("  ", "Energy Import T2", this->energy_import_t2_);
   LOG_SENSOR("  ", "Energy Export T1", this->energy_export_t1_);
